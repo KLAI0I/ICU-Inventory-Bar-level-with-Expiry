@@ -1,0 +1,1403 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ICU Inventory & Bar level with Expiry</title>
+
+  <!-- Google Font for barcode-like display in the web UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">
+
+  <!-- SheetJS (Excel parser) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Barcode generator (for sticker PDFs) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
+  <!-- jsPDF + AutoTable (PDF export) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#061325;
+      --panel:#0a2142;
+      --panel2:#0d2e5a;
+      --panel3:#081c36;
+      --accent:#2aa8ff;
+      --accent2:#7c4dff;
+      --accent3:#37d39a;
+      --text:#eaf2ff;
+      --muted:#a7c3ff;
+      --danger:#ff5c77;
+      --ok:#37d39a;
+      --warn:#ffd24d;
+      --line:rgba(255,255,255,.12);
+      --shadow: 0 16px 45px rgba(0,0,0,.40);
+      --radius: 16px;
+      --radius2: 22px;
+      --font: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      --barcode-font: "Libre Barcode 39", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:var(--font);
+      background:
+        radial-gradient(1100px 640px at 15% -12%, rgba(42,168,255,.40), transparent 60%),
+        radial-gradient(900px 520px at 85% -10%, rgba(124,77,255,.26), transparent 62%),
+        radial-gradient(1000px 650px at 60% 120%, rgba(55,211,154,.16), transparent 62%),
+        linear-gradient(180deg, rgba(6,19,37,1), rgba(5,15,30,1));
+      color:var(--text);
+      min-height:100vh;
+    }
+
+    .topbar{
+      position:sticky; top:0; z-index:10;
+      background: linear-gradient(90deg, rgba(10,33,66,.88), rgba(6,19,37,.55));
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+    }
+    .topbar-inner{
+      width: calc(100vw - 24px);
+      margin:0 auto;
+      padding:14px 0;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .brand{display:flex; align-items:center; gap:12px; padding-left:12px;}
+    .logoWrap{
+      display:flex; align-items:center;
+      padding:0 6px 0 0;
+    }
+    .careLogo{
+      height:44px;
+      width:auto;
+      max-width:210px;
+      object-fit:contain;
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,.35));
+    }
+    .titleblock .h1{font-size:26px;font-weight:900;letter-spacing:.25px;line-height:1.1;margin:0;}
+    .titleblock .sub{color:var(--muted);font-size:12px;margin:2px 0 0 0;}
+    .meta-actions{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:12px;}
+    .pill{
+      font-size:12px;
+      padding:8px 10px;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:999px;
+      color:var(--muted);
+      background: rgba(255,255,255,.05);
+      display:flex; gap:8px; align-items:center;
+    }
+
+    .wrap{
+      width: calc(100vw - 24px);
+      margin:16px auto 30px;
+      display:grid;
+      gap:16px;
+      grid-template-columns: 1fr;
+    }
+
+    .grid2{
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap:16px;
+    }
+    @media (max-width: 980px){ .grid2{grid-template-columns:1fr} }
+
+    .card{
+      background:
+        radial-gradient(900px 420px at 10% 0%, rgba(42,168,255,.10), transparent 60%),
+        radial-gradient(700px 420px at 90% 0%, rgba(124,77,255,.10), transparent 60%),
+        linear-gradient(180deg, rgba(13,46,90,.75), rgba(10,33,66,.65));
+      border:1px solid rgba(255,255,255,.13);
+      border-radius:var(--radius2);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:14px 16px;
+      border-bottom:1px solid var(--line);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .card-head h2{margin:0;font-size:14px;letter-spacing:.2px;}
+    .card-head .hint{color:var(--muted);font-size:12px;margin:0;opacity:.95;}
+    .card-body{padding:16px}
+
+    .dropzone{
+      border:1.5px dashed rgba(255,255,255,.25);
+      border-radius:var(--radius);
+      padding:18px;
+      background: rgba(255,255,255,.04);
+      display:flex; flex-direction:column; gap:12px;
+    }
+    .dropzone.drag{
+      border-color: rgba(42,168,255,.72);
+      background: rgba(42,168,255,.09);
+    }
+    .dz-row{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+    .dz-title{display:flex; flex-direction:column; gap:2px;}
+    .dz-title .big{font-weight:900; font-size:14px;}
+    .dz-title .small{color:var(--muted); font-size:12px;}
+
+    .btn{
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:14px;
+      font-weight:800;
+      font-size:12px;
+      cursor:pointer;
+      transition: transform .08s ease, background .12s ease, border-color .12s ease, filter .12s ease;
+      display:inline-flex; align-items:center; gap:8px;
+      user-select:none;
+    }
+    .btn:hover{background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.23)}
+    .btn:active{transform: translateY(1px)}
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(42,168,255,.98), rgba(124,77,255,.92));
+      border-color: rgba(255,255,255,.18);
+    }
+    .btn.primary:hover{filter:brightness(1.05)}
+    .btn.danger{
+      background: rgba(255,92,119,.10);
+      border-color: rgba(255,92,119,.35);
+      color: #ffdbe2;
+    }
+    .btn.ghost{background: transparent;}
+    .btn.small{padding:8px 10px;border-radius:12px;font-size:12px;}
+    .btn:disabled{opacity:.55;cursor:not-allowed;}
+
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:end}
+    .field{display:flex; flex-direction:column; gap:6px; min-width:160px; flex: 1 1 220px;}
+    label{font-size:12px;color: var(--muted);}
+    select, input[type="text"], input[type="number"], input[type="date"], input[type="search"]{
+      width:100%;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.16);
+      color: var(--text);
+      border-radius: 12px;
+      padding:10px 10px;
+      outline:none;
+      font-size:13px;
+    }
+    select:focus, input:focus{
+      border-color: rgba(42,168,255,.55);
+      box-shadow: 0 0 0 3px rgba(42,168,255,.12);
+    }
+    .note{color: var(--muted);font-size:12px;margin:10px 0 0 0;line-height:1.35;}
+
+    .kpi{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(150px,1fr));
+      gap:12px;
+    }
+    @media (max-width: 980px){ .kpi{grid-template-columns: repeat(2, minmax(150px,1fr))} }
+    .kpi .box{
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      padding:12px 12px;
+      background: rgba(255,255,255,.05);
+    }
+    .kpi .box .n{font-size:18px;font-weight:900;letter-spacing:.2px;margin:0;}
+    .kpi .box .t{color:var(--muted);font-size:12px;margin:4px 0 0 0;}
+
+    .table-wrap{
+      overflow:auto;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      background: rgba(0,0,0,.12);
+    }
+    table{border-collapse: collapse;width:100%;min-width: 1160px;}
+    th, td{
+      border-bottom:1px solid rgba(255,255,255,.10);
+      padding:10px 10px;
+      text-align:left;
+      font-size:12.5px;
+      vertical-align:top;
+      white-space:nowrap;
+    }
+    tbody tr:hover td{ background: rgba(42,168,255,.06); }
+
+    tbody tr.activeRow td{ background: rgba(55,211,154,.06); }
+    tbody tr.activeRow:hover td{ background: rgba(55,211,154,.10); }
+
+    th{
+      position:sticky; top:0;
+      background: linear-gradient(90deg, rgba(7,22,44,.92), rgba(10,33,66,.92));
+      backdrop-filter: blur(8px);
+      z-index:1;
+      color:#cfe2ff;
+      font-weight:900;
+      letter-spacing:.15px;
+    }
+    td input{width: 100%;min-width: 110px;padding:8px 8px;border-radius:10px;font-size:12.5px;}
+    .tiny{font-size:11px; color:var(--muted); line-height:1.1;}
+
+    /* Include checkbox (small + active) */
+    .chk{
+      width:16px; height:16px;
+      accent-color: var(--accent);
+      cursor:pointer;
+      transform: translateY(2px);
+    }
+    .chkwrap{
+      display:flex; align-items:center; justify-content:center;
+      width:100%;
+      padding-top:2px;
+    }
+
+    .barcodePreview{
+      font-family: var(--barcode-font);
+      font-size: 26px;
+      line-height: 0.9;
+      letter-spacing: 1px;
+      margin-top: 4px;
+      color: rgba(234,242,255,.92);
+      user-select: all;
+      text-align:center;
+    }
+    .badge{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      font-size:12px;
+      color: var(--muted);
+      background: rgba(255,255,255,.04);
+    }
+    .badge.ok{border-color: rgba(55,211,154,.35); color:#caffee; background: rgba(55,211,154,.08)}
+    .badge.warn{border-color: rgba(255,210,77,.35); color:#fff3c4; background: rgba(255,210,77,.08)}
+    .badge.danger{border-color: rgba(255,92,119,.35); color:#ffdbe2; background: rgba(255,92,119,.08)}
+    .right{margin-left:auto}
+    .divider{height:1px;background:var(--line); margin:14px 0}
+    .footer{margin-top:14px;color: var(--muted);font-size:12px;text-align:center;opacity:.9;}
+    .hide{display:none !important;}
+    .toast{
+      position:fixed; bottom:18px; left:50%; transform: translateX(-50%);
+      background: rgba(6,19,37,.92);
+      border:1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      padding:10px 14px;
+      box-shadow: var(--shadow);
+      color: #eaf2ff;
+      font-size: 12.5px;
+      display:none;
+      z-index:999;
+      max-width:min(96vw, 920px);
+      text-align:center;
+    }
+    .toast.show{display:block}
+
+    .progress{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .step{
+      display:flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.13);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size:12px;
+      font-weight:800;
+    }
+    .step.on{
+      color:#eaf2ff;
+      border-color: rgba(42,168,255,.45);
+      background: rgba(42,168,255,.08);
+    }
+    .step .dot{width:9px; height:9px; border-radius:50%;background: rgba(255,255,255,.25);}
+    .step.on .dot{background: var(--accent)}
+    .sep{opacity:.5}
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logoWrap"><img class="careLogo" src="https://care.med.sa/images/blue_new/CARE-Logo-03.png" alt="CARE Logo" /></div>
+        <div class="titleblock">
+          <p class="h1">ICU Inventory & Bar level with Expiry</p>
+          <p class="sub">Upload Excel → Review & adjust → Export summary PDF + sticker PDFs</p>
+        </div>
+      </div>
+
+      <div class="meta-actions">
+        <div class="pill" title="Default calculation">Max = 130% of Bar • Min = 25% of Bar</div>
+        <button class="btn ghost small" id="btnSample">Download sample Excel template</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Workflow</h2>
+          <p class="hint">Everything extracted can be edited manually before exporting.</p>
+        </div>
+        <div class="progress">
+          <div class="step on" id="step1"><span class="dot"></span>1) Upload</div>
+          <div class="sep">→</div>
+          <div class="step" id="step2"><span class="dot"></span>2) Map columns</div>
+          <div class="sep">→</div>
+          <div class="step" id="step3"><span class="dot"></span>3) Review & export</div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="grid2">
+          <div>
+            <div class="dropzone" id="dropzone">
+              <div class="dz-row">
+                <div class="dz-title">
+                  <div class="big">Upload your Excel file</div>
+                  <div class="small">Supported: .xlsx, .xls, .csv (first sheet will be used)</div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                  <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hide" />
+                  <button class="btn primary" id="btnBrowse">Choose File</button>
+                  <button class="btn" id="btnClearAll" disabled>Clear</button>
+                </div>
+              </div>
+
+              <div class="tiny">Tip: You can also drag & drop the file here.</div>
+              <div class="divider"></div>
+
+              <div class="row">
+                <div class="field">
+                  <label>Max factor (default 1.30)</label>
+                  <input type="number" id="maxFactor" value="1.30" step="0.01" min="0" />
+                </div>
+                <div class="field">
+                  <label>Min factor (default 0.25)</label>
+                  <input type="number" id="minFactor" value="0.25" step="0.01" min="0" />
+                </div>
+                <div class="field" style="min-width:200px">
+                  <button class="btn" id="btnRecalc" disabled>Recalculate all items</button>
+                </div>
+              </div>
+
+              <p class="note" id="fileInfo">No file loaded yet.</p>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Export</h2>
+                <p class="hint">Summary: A4 Landscape • Stickers: 2.17 × 1.18 inch</p>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="field" style="min-width:260px">
+                    <label>Search item</label>
+                    <input id="searchBox" type="search" placeholder="Type item name or code…" disabled />
+                  </div>
+                  <div class="field" style="min-width:240px">
+                    <label>Include items</label>
+                    <select id="quickFilter" disabled>
+                      <option value="all" selected>All items</option>
+                      <option value="selected">Only checked items</option>
+                      <option value="expSoon">Expiring within 90 days</option>
+                      <option value="noExpiry">No expiry date</option>
+                    </select>
+                  </div>
+                </div>
+
+                
+                <div class="divider"></div>
+
+                <div class="row">
+                  <div class="field" style="min-width:240px">
+                    <label>Export scope</label>
+                    <select id="exportScope" disabled>
+                      <option value="selected" selected>Only checked items</option>
+                      <option value="nearExpiry">Nearly expiry items (≤ days)</option>
+                      <option value="all">All items</option>
+                    </select>
+                  </div>
+                  <div class="field" style="min-width:200px">
+                    <label>Near-expiry days</label>
+                    <input type="number" id="nearDays" value="90" min="1" step="1" disabled />
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="row" style="align-items:center">
+
+                  <button class="btn primary" id="btnExportSummary" disabled>1) Export Summary PDF (A4 Landscape)</button>
+                  <button class="btn" id="btnExportAllStickers" disabled>3) Export All Stickers in ONE PDF</button>
+                  <button class="btn" id="btnExportExcel" disabled>Export Excel (XLSX)</button>
+                  <span class="badge" id="exportHint">Upload an Excel file to enable export.</span>
+                </div>
+
+                <p class="note">Function #2: Each item row has a <b>Sticker PDF</b> button. You can also export an <b>Excel (XLSX)</b> file using the chosen export scope.</p>
+                
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="card-head">
+                <h2>Column mapping</h2>
+                <p class="hint">Choose which columns represent Code / Name / Expiry / Bar estimate.</p>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="field">
+                    <label>Item code column</label>
+                    <select id="colCode" disabled></select>
+                  </div>
+                  <div class="field">
+                    <label>Item name column</label>
+                    <select id="colName" disabled></select>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="field">
+                    <label>Expiry date column</label>
+                    <select id="colExpiry" disabled></select>
+                  </div>
+                  <div class="field">
+                    <label>Current stock column (used to estimate Bar)</label>
+                    <select id="colStock" disabled></select>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="field">
+                    <label>Optional: Bar level column (if it already exists)</label>
+                    <select id="colBar" disabled></select>
+                  </div>
+                  <div class="field">
+                    <label>Optional: Pack / Unit column</label>
+                    <select id="colPack" disabled></select>
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+                <div class="row" style="align-items:center">
+                  <button class="btn primary" id="btnApplyMapping" disabled>Apply mapping & load items</button>
+                  <span class="badge" id="mapStatus">Waiting for file…</span>
+                </div>
+
+                <p class="note tiny">Auto-detection tries to match columns like “Code”, “Item”, “Expiry”, “Stock”.</p>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Quick stats</h2>
+                <p class="hint">After loading items.</p>
+              </div>
+              <div class="card-body">
+                <div class="kpi">
+                  <div class="box"><p class="n" id="kpiCount">0</p><p class="t">Items</p></div>
+                  <div class="box"><p class="n" id="kpiSelected">0</p><p class="t">Checked for export</p></div>
+                  <div class="box"><p class="n" id="kpiExpSoon">0</p><p class="t">Expiring ≤ 90 days</p></div>
+                  <div class="box"><p class="n" id="kpiNoExpiry">0</p><p class="t">No expiry date</p></div>
+                </div>
+
+                <p class="note tiny" style="margin-top:10px">
+                  “Current stock” is used only to estimate Bar level (not shown in the table).
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Extracted data (editable)</h2>
+            <p class="hint">Bar/Max/Min are integers. Max/Min recalculates automatically when Bar changes.</p>
+          </div>
+          <div class="card-body">
+            
+
+            <div class="row" style="align-items:center">
+              <button class="btn danger" id="btnDeleteChecked" disabled>Delete checked items</button>
+              <button class="btn" id="btnCheckAll" disabled>Check all</button>
+              <button class="btn" id="btnUncheckAll" disabled>Uncheck all</button>
+              <span class="badge right" id="lastSaved">Not saved (local only)</span>
+            </div>
+
+            
+
+            <div class="divider"></div>
+
+            <div class="table-wrap">
+              <table id="itemsTable">
+                <thead>
+                  <tr>
+                    <th style="width:56px; text-align:center; font-size:11px;">Include</th>
+                    <th style="min-width:230px;">Item code</th>
+                    <th style="min-width:320px;">Item name</th>
+                    <th style="width:180px;">Expiry date</th>
+                    <th style="width:140px;">Bar level</th>
+                    <th style="width:150px;">Maximum</th>
+                    <th style="width:150px;">Minimum</th>
+                    <th style="min-width:180px;">Pack/Unit</th>
+                    <th style="width:200px;">Status</th>
+                    <th style="width:170px;">Sticker</th>
+                  </tr>
+                </thead>
+                <tbody id="itemsBody">
+                  <tr><td colspan="10" class="tiny">Upload an Excel file to see items here.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p class="note tiny">This web page runs locally in your browser (no upload to server).</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer">Designed by Mr. Mohamed Ghonim - ICU head Nurse</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { rawHeaders: [], rawRows: [], items: [], fileName: "", loaded: false };
+
+    function toast(msg){
+      const t = $("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      clearTimeout(toast._tm);
+      toast._tm = setTimeout(()=>t.classList.remove("show"), 3200);
+    }
+
+    function clampNum(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
+    function int0(n){ return Math.round(clampNum(n)); } // integer
+    function safeText(v){ if (v === null || v === undefined) return ""; return String(v).trim(); }
+
+    function isProbablyHeaderRow(row){
+      const joined = row.map(x=>safeText(x).toLowerCase()).join("|");
+      return /item|name|expiry|exp|date|qty|quantity|bar|level|stock|pack|unit|balance|on hand|available|code|sku|id/.test(joined);
+    }
+    function normalizeHeader(h){ return safeText(h) || ""; }
+
+    function guessHeader(headers, patterns){
+      const lower = headers.map(h => (h||"").toLowerCase());
+      for (const p of patterns){
+        const idx = lower.findIndex(h => h.includes(p));
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    }
+
+    function excelDateToISO(v){
+      if (v === null || v === undefined || v === "") return "";
+      if (Object.prototype.toString.call(v) === "[object Date]" && !isNaN(v)) return v.toISOString().slice(0,10);
+      if (typeof v === "string"){
+        const s = v.trim();
+        const d = new Date(s);
+        if (!isNaN(d)) return d.toISOString().slice(0,10);
+        const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+        if (m){
+          const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3] < 100 ? (2000+Number(m[3])) : Number(m[3]));
+          const d2 = new Date(Date.UTC(yy, mm-1, dd));
+          if (!isNaN(d2)) return d2.toISOString().slice(0,10);
+        }
+        return "";
+      }
+      if (typeof v === "number"){
+        try{
+          const dateCode = XLSX.SSF.parse_date_code(v);
+          if (!dateCode) return "";
+          const d = new Date(Date.UTC(dateCode.y, dateCode.m - 1, dateCode.d));
+          if (!isNaN(d)) return d.toISOString().slice(0,10);
+        }catch(e){}
+      }
+      return "";
+    }
+
+    function isoToDMY(iso){
+      if (!iso) return "";
+      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return iso;
+      return `${m[3]}-${m[2]}-${m[1]}`;
+    }
+
+    function daysUntil(iso){
+      if (!iso) return Infinity;
+      const d = new Date(iso + "T00:00:00");
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diff = d - today;
+      return Math.ceil(diff / (1000*60*60*24));
+    }
+
+    function setStep(active){
+      $("step1").classList.toggle("on", active === 1);
+      $("step2").classList.toggle("on", active === 2);
+      $("step3").classList.toggle("on", active === 3);
+    }
+
+    function setEnabled(loaded){
+      const ids = [
+        "btnClearAll","btnRecalc",
+        "colCode","colName","colExpiry","colStock","colBar","colPack","btnApplyMapping",
+        "searchBox","quickFilter",
+        "btnExportSummary","btnExportAllStickers","btnExportExcel","exportScope","nearDays",
+        "btnDeleteChecked","btnCheckAll","btnUncheckAll"
+      ];
+      ids.forEach(id => { const el = $(id); if (el) el.disabled = !loaded; });
+      $("exportHint").textContent = loaded ? "Ready to export." : "Upload an Excel file to enable export.";
+    }
+
+    function buildSelect(selectEl, headers, allowNone=false){
+      selectEl.innerHTML = "";
+      if (allowNone){
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "(None)";
+        selectEl.appendChild(opt);
+      }
+      headers.forEach((h, idx)=>{
+        const opt = document.createElement("option");
+        opt.value = String(idx);
+        opt.textContent = h || `Column ${idx+1}`;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function autoSelectMapping(){
+      const headers = state.rawHeaders;
+
+      const idxCode = guessHeader(headers, ["item code","product code","material code","code","sku","id"]);
+      const idxName = guessHeader(headers, ["item name","item","name","drug","material","product"]);
+      const idxExp  = guessHeader(headers, ["expiry","exp","expire","expiration","end date","valid to","validity"]);
+      const idxStock = guessHeader(headers, ["stock","on hand","on-hand","available","balance","qty","quantity"]);
+      const idxBar  = guessHeader(headers, ["bar level","par level","reorder level","re-order","minimum level","bar"]);
+      const idxPack = guessHeader(headers, ["pack","unit","uom","factor","size"]);
+
+      if (idxCode >= 0) $("colCode").value = String(idxCode);
+      if (idxName >= 0) $("colName").value = String(idxName);
+      if (idxExp  >= 0) $("colExpiry").value = String(idxExp);
+      if (idxStock  >= 0) $("colStock").value = String(idxStock);
+      if (idxBar  >= 0) $("colBar").value = String(idxBar);
+      if (idxPack >= 0) $("colPack").value = String(idxPack);
+    }
+
+    function computeDerived(item){
+      const maxF = clampNum($("maxFactor").value || 1.30);
+      const minF = clampNum($("minFactor").value || 0.25);
+
+      item.bar = int0(item.bar);
+      item.max = int0(item.bar * maxF);
+      item.min = int0(item.bar * minF);
+    }
+
+    function recalcAll(){
+      state.items.forEach(it => computeDerived(it));
+      renderTable();
+      updateKPIs();
+      toast("Recalculated Max/Min for all items.");
+    }
+
+    function inferItemsFromRows(mapping){
+      const {codeIdx, nameIdx, expiryIdx, stockIdx, barIdx, packIdx} = mapping;
+      const items = [];
+      const seen = new Set();
+
+      for (let r = 0; r < state.rawRows.length; r++){
+        const row = state.rawRows[r];
+
+        const name = safeText(row[nameIdx]);
+        if (!name) continue;
+
+        const code = codeIdx !== null ? safeText(row[codeIdx]) : "";
+        const expISO = expiryIdx !== null ? excelDateToISO(row[expiryIdx]) : "";
+        const key = (code + "||" + name + "||" + expISO).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const stock = stockIdx !== null ? clampNum(row[stockIdx]) : 0;
+
+        let bar = stock; // default estimate from stock
+        if (barIdx !== null){
+          const b = clampNum(row[barIdx]);
+          if (Number.isFinite(b) && b !== 0) bar = b;
+        }
+
+        const item = {
+          id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now() + Math.random()),
+          include: true,
+          code,
+          name,
+          expiryISO: expISO,
+          bar: int0(bar),
+          max: 0,
+          min: 0,
+          pack: packIdx !== null ? safeText(row[packIdx]) : ""
+        };
+        computeDerived(item);
+        items.push(item);
+      }
+
+      return items;
+    }
+
+    function statusBadge(item){
+      const d = daysUntil(item.expiryISO);
+      if (!item.expiryISO) return {cls:"", text:"No expiry date"};
+      if (d < 0) return {cls:"danger", text:`Expired (${Math.abs(d)} day${Math.abs(d)===1?"":"s"} ago)`};
+      if (d <= 30) return {cls:"danger", text:`Expiring in ${d} day${d===1?"":"s"}`};
+      if (d <= 90) return {cls:"warn", text:`Expiring in ${d} days`};
+      return {cls:"ok", text:`OK (${d} days left)`};
+    }
+
+    function barcodeFontText(code){
+      const c = safeText(code).replace(/\*/g,"");
+      if (!c) return "";
+      return `*${c}*`;
+    }
+
+    function getFilteredItems(){
+      const q = $("searchBox").value.trim().toLowerCase();
+      const mode = $("quickFilter").value;
+
+      return state.items.filter(it=>{
+        if (q){
+          const hay = (it.name + " " + (it.code||"")).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+
+        if (mode === "selected" && !it.include) return false;
+        if (mode === "expSoon"){
+          const d = daysUntil(it.expiryISO);
+          if (!(it.expiryISO && d >= 0 && d <= 90)) return false;
+        }
+        if (mode === "noExpiry"){ if (it.expiryISO) return false; }
+
+        return true;
+      });
+    }
+
+    function renderTable(){
+      const tbody = $("itemsBody");
+      const items = getFilteredItems();
+
+      if (!state.loaded){
+        tbody.innerHTML = `<tr><td colspan="10" class="tiny">Upload an Excel file to see items here.</td></tr>`;
+        return;
+      }
+      if (items.length === 0){
+        tbody.innerHTML = `<tr><td colspan="10" class="tiny">No items match the current filter.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = "";
+      for (const it of items){
+        const tr = document.createElement("tr");
+        tr.classList.toggle("activeRow", !!it.include);
+        const st = statusBadge(it);
+
+        tr.innerHTML = `
+          <td style="text-align:center;">
+            <label class="chkwrap" style="cursor:pointer;">
+              <input class="chk" type="checkbox" ${it.include ? "checked":""} data-act="toggleInclude" data-id="${it.id}" title="Include / Exclude" />
+            </label>
+          </td>
+
+          <td>
+            <input type="text" value="${escapeHtml(it.code)}" data-act="editCode" data-id="${it.id}" />
+            <div class="barcodePreview">${escapeHtml(barcodeFontText(it.code))}</div>
+          </td>
+
+          <td><input type="text" value="${escapeHtml(it.name)}" data-act="editName" data-id="${it.id}" /></td>
+
+          <td>
+            <input type="date" value="${escapeHtml(it.expiryISO)}" data-act="editExpiry" data-id="${it.id}" />
+            <div class="tiny">${it.expiryISO ? "DD-MM-YYYY: " + isoToDMY(it.expiryISO) : ""}</div>
+          </td>
+
+          <td><input type="number" step="1" value="${it.bar}" data-act="editBar" data-id="${it.id}" /></td>
+          <td><input type="number" step="1" value="${it.max}" data-act="editMax" data-id="${it.id}" /></td>
+          <td><input type="number" step="1" value="${it.min}" data-act="editMin" data-id="${it.id}" /></td>
+
+          <td><input type="text" value="${escapeHtml(it.pack)}" data-act="editPack" data-id="${it.id}" /></td>
+
+          <td><span class="badge ${st.cls}">${escapeHtml(st.text)}</span></td>
+
+          <td><button class="btn small" data-act="stickerOne" data-id="${it.id}">Sticker PDF</button></td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function escapeHtml(s){
+      return String(s ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+    }
+
+    function updateKPIs(){
+      const total = state.items.length;
+      const selected = state.items.filter(x=>x.include).length;
+      const expSoon = state.items.filter(x=>{
+        const d = daysUntil(x.expiryISO);
+        return x.expiryISO && d >= 0 && d <= 90;
+      }).length;
+      const noExpiry = state.items.filter(x=>!x.expiryISO).length;
+
+      $("kpiCount").textContent = String(total);
+      $("kpiSelected").textContent = String(selected);
+      $("kpiExpSoon").textContent = String(expSoon);
+      $("kpiNoExpiry").textContent = String(noExpiry);
+
+      $("lastSaved").textContent = `Loaded • ${new Date().toLocaleString()}`;
+    }
+
+    // -----------------------------
+    // File parsing
+    // -----------------------------
+    async function parseFile(file){
+      if (!file) return;
+      await waitForLibs();
+
+      state.fileName = file.name;
+      const arrBuf = await file.arrayBuffer();
+      const wb = XLSX.read(arrBuf, {type:"array", cellDates:true});
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:""});
+      if (!rows || rows.length === 0) throw new Error("No data found in the file.");
+
+      let headerRowIdx = 0;
+      if (!isProbablyHeaderRow(rows[0]) && rows.length > 1 && isProbablyHeaderRow(rows[1])) headerRowIdx = 1;
+
+      const headers = rows[headerRowIdx].map((h, i)=> normalizeHeader(h) || `Column ${i+1}`);
+      const dataRows = rows.slice(headerRowIdx + 1).filter(r => r && r.some(v => safeText(v) !== ""));
+
+      state.rawHeaders = headers;
+      state.rawRows = dataRows;
+
+      buildSelect($("colCode"), headers, true);
+      buildSelect($("colName"), headers);
+      buildSelect($("colExpiry"), headers, true);
+      buildSelect($("colStock"), headers, true);
+      buildSelect($("colBar"), headers, true);
+      buildSelect($("colPack"), headers, true);
+
+      $("colCode").value = "";
+      $("colName").value = "0";
+      $("colExpiry").value = "";
+      $("colStock").value = "";
+      $("colBar").value = "";
+      $("colPack").value = "";
+
+      autoSelectMapping();
+
+      setStep(2);
+      $("mapStatus").textContent = `Loaded sheet: ${sheetName} • ${dataRows.length} row(s)`;
+      $("mapStatus").classList.add("ok");
+      $("fileInfo").textContent = `File loaded: ${file.name} • Sheet: ${sheetName} • Rows: ${dataRows.length}`;
+
+      setEnabled(true);
+      $("btnApplyMapping").disabled = false;
+      $("btnClearAll").disabled = false;
+      toast("File loaded. Please confirm column mapping.");
+    }
+
+    function getMapping(){
+      const codeIdx = $("colCode").value === "" ? null : Number($("colCode").value);
+      const nameIdx = Number($("colName").value);
+      const expiryIdx = $("colExpiry").value === "" ? null : Number($("colExpiry").value);
+      const stockIdx = $("colStock").value === "" ? null : Number($("colStock").value);
+      const barIdx = $("colBar").value === "" ? null : Number($("colBar").value);
+      const packIdx = $("colPack").value === "" ? null : Number($("colPack").value);
+
+      if (!Number.isFinite(nameIdx)) throw new Error("Please select the Item name column.");
+      return {codeIdx, nameIdx, expiryIdx, stockIdx, barIdx, packIdx};
+    }
+
+    function applyMapping(){
+      const mapping = getMapping();
+      const items = inferItemsFromRows(mapping);
+
+      if (items.length === 0){
+        toast("No items found. Check mapping and make sure Item name column is correct.");
+        return;
+      }
+
+      state.items = items;
+      state.loaded = true;
+
+      setStep(3);
+      $("mapStatus").textContent = `Items loaded: ${items.length}`;
+      $("exportHint").className = "badge ok";
+      $("exportHint").textContent = "Ready to export.";
+
+      renderTable();
+      updateKPIs();
+
+      $("btnRecalc").disabled = false;
+      $("btnExportSummary").disabled = false;
+      $("btnExportAllStickers").disabled = false;
+      $("btnExportExcel").disabled = false;
+      $("searchBox").disabled = false;
+      $("quickFilter").disabled = false;
+      $("exportScope").disabled = false;
+      $("nearDays").disabled = ($("exportScope").value !== "nearExpiry");
+      $("btnDeleteChecked").disabled = false;
+      $("btnCheckAll").disabled = false;
+      $("btnUncheckAll").disabled = false;
+
+      toast("Items are ready. Review & export.");
+    }
+
+    function clearAll(){
+      state.rawHeaders = [];
+      state.rawRows = [];
+      state.items = [];
+      state.fileName = "";
+      state.loaded = false;
+
+      $("fileInput").value = "";
+      $("fileInfo").textContent = "No file loaded yet.";
+      $("mapStatus").textContent = "Waiting for file…";
+      $("mapStatus").className = "badge";
+      $("exportHint").className = "badge";
+      $("exportHint").textContent = "Upload an Excel file to enable export.";
+
+      ["colCode","colName","colExpiry","colStock","colBar","colPack"].forEach(id => $(id).innerHTML="");
+
+      setStep(1);
+      setEnabled(false);
+      renderTable();
+      updateKPIs();
+      toast("Cleared.");
+    }
+
+    async function waitForLibs(){
+      const start = Date.now();
+      while (true){
+        const ok = window.XLSX && window.jspdf && window.jspdf.jsPDF && window.JsBarcode;
+        if (ok) return;
+        if (Date.now() - start > 9000) throw new Error("Libraries failed to load. Please check your internet connection.");
+        await new Promise(r=>setTimeout(r, 80));
+      }
+    }
+
+    // -----------------------------
+    // PDF Export (no footer in exported files)
+    // -----------------------------
+    function ensurePDF(){
+      if (!(window.jspdf && window.jspdf.jsPDF)){
+        toast("jsPDF failed to load.");
+        throw new Error("jsPDF missing");
+      }
+      return window.jspdf.jsPDF;
+    }
+
+
+    function getExportItems(){
+      const scope = $("exportScope")?.value || "selected";
+      const daysLimit = Math.max(1, int0($("nearDays")?.value || 90));
+
+      if (scope === "all") return [...state.items];
+
+      if (scope === "nearExpiry"){
+        return state.items.filter(it=>{
+          if (!it.expiryISO) return false;
+          const d = daysUntil(it.expiryISO);
+          return d >= 0 && d <= daysLimit;
+        });
+      }
+
+      // default: selected (checked)
+      return state.items.filter(it=>it.include);
+    }
+
+    function exportSummaryPDF(){
+      const jsPDF = ensurePDF();
+      const items = getExportItems();
+      if (items.length === 0){ toast("No items match the chosen export scope."); return; }
+
+      const doc = new jsPDF({orientation:"landscape", unit:"pt", format:"a4"});
+      const margin = 14; // narrow
+
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(13);
+      doc.text("ICU Inventory Bar-Level Summary", margin, 24);
+
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(90);
+      doc.text(`Source file: ${state.fileName || "N/A"}   •   Export date: ${new Date().toLocaleString()}`, margin, 38);
+      doc.setTextColor(0);
+
+      const body = items.map((it, idx)=>[
+        idx+1,
+        it.code || "",
+        it.name,
+        isoToDMY(it.expiryISO),
+        String(int0(it.bar)),
+        String(int0(it.max)),
+        String(int0(it.min)),
+        it.pack || ""
+      ]);
+
+      // Fit all columns in A4 landscape, and center text in cells
+      doc.autoTable({
+        startY: 48,
+        margin: {left: margin, right: margin},
+        tableWidth: "auto",
+        styles: {
+          fontSize: 8.4,
+          cellPadding: 3,
+          halign: "center",
+          valign: "middle",
+          overflow: "linebreak"
+        },
+        headStyles: {fillColor: [7,22,44], textColor: [234,242,255], halign: "center", valign: "middle"},
+        head: [[ "#", "Item code", "Item name", "Expiry (DD-MM-YYYY)", "Bar", "Max (130%)", "Min (25%)", "Pack/Unit" ]],
+        body,
+        columnStyles: {
+          0: {cellWidth: 26},
+          1: {cellWidth: 92},
+          2: {cellWidth: 260},
+          3: {cellWidth: 110},
+          4: {cellWidth: 52},
+          5: {cellWidth: 70},
+          6: {cellWidth: 70},
+          7: {cellWidth: 110}
+        }
+      });
+
+      const fname = `ICU_Summary_${safeFileName(state.fileName)}_${ymdStamp()}.pdf`;
+      doc.save(fname);
+      toast("Summary PDF exported.");
+    }
+
+    function makeBarcodePNGDataURL(value){
+      const raw = safeText(value);
+      if (!raw) return null;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 900;
+      canvas.height = 260;
+
+      try{
+        JsBarcode(canvas, raw, {
+          format: "CODE128",
+          displayValue: true,         // show code under barcode
+          font: "monospace",
+          fontSize: 34,
+          textMargin: 0,
+          margin: 0,
+          height: 150,
+          width: 3
+        });
+        return canvas.toDataURL("image/png");
+      }catch(e){
+        console.warn("Barcode generation failed", e);
+        return null;
+      }
+    }
+
+    function exportStickerForItem(item){
+      const jsPDF = ensurePDF();
+      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[2.17, 1.18]});
+      drawStickerPage(doc, item);
+      const fname = `Sticker_${safeFileName(item.code || item.name)}_${ymdStamp()}.pdf`;
+      doc.save(fname);
+      toast("Sticker PDF exported.");
+    }
+
+    function exportAllStickers(){
+      const jsPDF = ensurePDF();
+      const items = getExportItems();
+      if (items.length === 0){ toast("No items match the chosen export scope."); return; }
+
+      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[2.17, 1.18]});
+      items.forEach((it, idx)=>{
+        if (idx > 0) doc.addPage([2.17,1.18], "landscape");
+        drawStickerPage(doc, it);
+      });
+
+      const fname = `All_Stickers_${safeFileName(state.fileName)}_${ymdStamp()}.pdf`;
+      doc.save(fname);
+      toast("All stickers PDF exported.");
+    }
+
+    function drawStickerPage(doc, item){
+      const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+
+      const margin = 0.07; // inches
+      const innerW = W - margin*2;
+      const innerH = H - margin*2;
+
+      // Border
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.02);
+      doc.roundedRect(margin, margin, innerW, innerH, 0.08, 0.08, "S");
+
+      // Header background (black)
+      const headerH = 0.26;
+      doc.setFillColor(0,0,0);
+      doc.roundedRect(margin, margin, innerW, headerH, 0.08, 0.08, "F");
+
+      // Header text (item name)
+      doc.setTextColor(255,255,255);
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(8.9);
+      const name = safeText(item.name) || "";
+      const nameLines = doc.splitTextToSize(name, innerW - 0.10);
+      // center vertically inside header
+      const headerTextY = margin + 0.18;
+      doc.text(nameLines.slice(0,2), margin + innerW/2, headerTextY, {align:"center"});
+
+      // Barcode
+      doc.setTextColor(0,0,0);
+      const dataUrl = makeBarcodePNGDataURL(safeText(item.code));
+      const barcodeTop = margin + headerH + 0.06;
+      const barcodeH = 0.54;
+      if (dataUrl){
+        const imgW = innerW - 0.12;
+        const imgX = margin + 0.06;
+        doc.addImage(dataUrl, "PNG", imgX, barcodeTop, imgW, barcodeH);
+      }else{
+        doc.setFont("helvetica","normal");
+        doc.setFontSize(8);
+        doc.text("NO CODE", margin + innerW/2, barcodeTop + 0.26, {align:"center"});
+      }
+
+      // Bottom line: Bar, Max, Min, Exp (same line)
+      const exp = item.expiryISO ? isoToDMY(item.expiryISO) : "N/A";
+      const bottomText = `Bar ${int0(item.bar)}  |  Max ${int0(item.max)}  |  Min ${int0(item.min)}  |  Exp ${exp}`;
+
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(7.2);
+
+      const bottomY = H - margin - 0.10;
+      // Ensure it fits within sticker width
+      let txt = bottomText;
+      // If too long, shorten Exp label
+      if (doc.getTextWidth(txt) > innerW - 0.08){
+        txt = `Bar ${int0(item.bar)} | Max ${int0(item.max)} | Min ${int0(item.min)} | ${exp}`;
+      }
+      doc.text(txt, margin + innerW/2, bottomY, {align:"center"});
+    }
+
+
+    async function exportExcelXLSX(){
+      await waitForLibs();
+      const items = getExportItems();
+      if (items.length === 0){ toast("No items match the chosen export scope."); return; }
+
+      const data = [
+        ["Item Code","Item Name","Expiry Date (DD-MM-YYYY)","Bar","Max (130%)","Min (25%)","Pack/Unit"]
+      ];
+      items.forEach(it=>{
+        data.push([
+          it.code || "",
+          it.name || "",
+          it.expiryISO ? isoToDMY(it.expiryISO) : "",
+          int0(it.bar),
+          int0(it.max),
+          int0(it.min),
+          it.pack || ""
+        ]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
+
+      // Improve column widths (approx)
+      ws["!cols"] = [
+        {wch:18},{wch:42},{wch:20},{wch:8},{wch:10},{wch:10},{wch:16}
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, "Sticker_Data");
+      const fname = `ICU_Sticker_Data_${safeFileName(state.fileName)}_${ymdStamp()}.xlsx`;
+      XLSX.writeFile(wb, fname);
+      toast("Excel exported.");
+    }
+
+    function ymdStamp(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const da = String(d.getDate()).padStart(2,"0");
+      return `${y}${m}${da}`;
+    }
+
+    function safeFileName(s){
+      return (String(s || "file").trim() || "file")
+        .replace(/[\\/:*?"<>|]+/g, "_")
+        .replace(/\s+/g, "_")
+        .slice(0, 60);
+    }
+
+    // -----------------------------
+    // Sample template generator
+    // -----------------------------
+    async function downloadSample(){
+      await waitForLibs();
+      const wb = XLSX.utils.book_new();
+      const data = [
+        ["Item Code", "Item Name", "Expiry Date", "Current Stock", "Pack/Unit"],
+        ["SR-10ML-001", "Syringe 10 mL", "2026-05-30", 120, "Box"],
+        ["IV-20G-012", "IV Cannula 20G", "2026-02-15", 60, "Piece"],
+        ["NS-500-005", "Normal Saline 0.9% 500 mL", "2025-12-30", 40, "Bottle"],
+        ["GLV-M-020", "Gloves (Medium)", "2027-01-01", 300, "Box"]
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+      XLSX.writeFile(wb, "ICU_Inventory_Template.xlsx");
+      toast("Sample template downloaded.");
+    }
+
+    // -----------------------------
+    // Events
+    // -----------------------------
+    $("btnBrowse").addEventListener("click", ()=> $("fileInput").click());
+    $("fileInput").addEventListener("change", async (e)=>{
+      const f = e.target.files?.[0];
+      if (!f) return;
+      try{ await parseFile(f); }
+      catch(err){ console.error(err); toast(err.message || "Failed to read file."); }
+    });
+
+    const dz = $("dropzone");
+    dz.addEventListener("dragover", (e)=>{ e.preventDefault(); dz.classList.add("drag"); });
+    dz.addEventListener("dragleave", ()=> dz.classList.remove("drag"));
+    dz.addEventListener("drop", async (e)=>{
+      e.preventDefault(); dz.classList.remove("drag");
+      const f = e.dataTransfer.files?.[0];
+      if (!f) return;
+      try{ await parseFile(f); }
+      catch(err){ console.error(err); toast(err.message || "Failed to read file."); }
+    });
+
+    $("btnApplyMapping").addEventListener("click", ()=>{
+      try{ applyMapping(); }
+      catch(err){ console.error(err); toast(err.message || "Mapping failed."); }
+    });
+
+    $("btnClearAll").addEventListener("click", clearAll);
+    $("btnRecalc").addEventListener("click", recalcAll);
+
+    $("searchBox").addEventListener("input", renderTable);
+    $("quickFilter").addEventListener("change", renderTable);
+
+
+    $("exportScope").addEventListener("change", ()=>{
+      const v = $("exportScope").value;
+      $("nearDays").disabled = (v !== "nearExpiry") || !state.loaded;
+    });
+
+
+    $("btnExportSummary").addEventListener("click", ()=>{
+      try{ exportSummaryPDF(); }catch(err){ console.error(err); toast("Export failed."); }
+    });
+
+    $("btnExportAllStickers").addEventListener("click", ()=>{
+      try{ exportAllStickers(); }catch(err){ console.error(err); toast("Export failed."); }
+    });
+
+    
+    $("btnExportExcel").addEventListener("click", ()=>{
+      exportExcelXLSX().catch(err=>{ console.error(err); toast("Excel export failed."); });
+    });
+
+$("btnSample").addEventListener("click", ()=>{
+      downloadSample().catch(err=>{ console.error(err); toast(err.message || "Failed."); });
+    });
+
+    $("btnDeleteChecked").addEventListener("click", ()=>{
+      if (!state.loaded) return;
+      const before = state.items.length;
+      state.items = state.items.filter(x => !x.include);
+      renderTable(); updateKPIs();
+      toast(`Deleted ${before - state.items.length} item(s).`);
+    });
+
+    $("btnCheckAll").addEventListener("click", ()=>{
+      state.items.forEach(x=>x.include = true);
+      renderTable(); updateKPIs();
+    });
+    $("btnUncheckAll").addEventListener("click", ()=>{
+      state.items.forEach(x=>x.include = false);
+      renderTable(); updateKPIs();
+    });
+
+    $("itemsBody").addEventListener("input", (e)=>{
+      const el = e.target;
+      const act = el?.dataset?.act;
+      const id = el?.dataset?.id;
+      if (!act || !id) return;
+
+      // IMPORTANT: do not re-render on checkbox input; handle it in the "change" listener
+      if (act === "toggleInclude") return;
+      const it = state.items.find(x=>x.id === id);
+      if (!it) return;
+
+      if (act === "editCode") it.code = el.value;
+      if (act === "editName") it.name = el.value;
+      if (act === "editExpiry") it.expiryISO = el.value;
+
+      if (act === "editBar"){
+        it.bar = int0(el.value);
+        computeDerived(it);
+        renderTable(); updateKPIs();
+        return;
+      }
+      if (act === "editMax") it.max = int0(el.value);
+      if (act === "editMin") it.min = int0(el.value);
+      if (act === "editPack") it.pack = el.value;
+
+      renderTable(); // refresh barcode preview if code changes
+      updateKPIs();
+    });
+
+    $("itemsBody").addEventListener("change", (e)=>{
+      const el = e.target;
+      const act = el?.dataset?.act;
+      const id = el?.dataset?.id;
+      if (act === "toggleInclude"){
+        const it = state.items.find(x=>x.id === id);
+        if (!it) return;
+        it.include = !!el.checked;
+        renderTable();
+        updateKPIs();
+      }
+    });
+
+    $("itemsBody").addEventListener("click", (e)=>{
+      const btn = e.target.closest("button[data-act='stickerOne']");
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const it = state.items.find(x=>x.id === id);
+      if (!it) return;
+      try{ exportStickerForItem(it); }catch(err){ console.error(err); toast("Sticker export failed."); }
+    });
+
+    setEnabled(false);
+    setStep(1);
+  </script>
+</body>
+</html>
