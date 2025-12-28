@@ -16,8 +16,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
-    /* ✅ NEW: Local Code 39 font (Free 3 of 9 Extended)
-       Put fre3of9x.ttf in the SAME folder as this HTML file. */
+    /* Put fre3of9x.ttf in the SAME folder as this HTML file */
     @font-face{
       font-family: "Free3of9Extended";
       src: url("fre3of9x.ttf") format("truetype");
@@ -44,7 +43,7 @@
       --radius2: 22px;
       --font: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
 
-      /* ✅ NEW: use your attached font */
+      /* Code 39 font for on-screen preview under Item code */
       --barcode-font: "Free3of9Extended", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
     *{box-sizing:border-box}
@@ -73,42 +72,29 @@
       display:flex; align-items:center; justify-content:space-between; gap:12px;
     }
     .brand{display:flex; align-items:center; gap:12px; padding-left:12px;}
-    .logoWrap{
-      display:flex; align-items:center;
-      padding:0 6px 0 0;
-    }
+    .logoWrap{display:flex; align-items:center; padding:0 6px 0 0;}
     .careLogo{
-      height:44px;
-      width:auto;
-      max-width:210px;
-      object-fit:contain;
+      height:44px; width:auto; max-width:210px; object-fit:contain;
       filter: drop-shadow(0 10px 22px rgba(0,0,0,.35));
     }
     .titleblock .h1{font-size:26px;font-weight:900;letter-spacing:.25px;line-height:1.1;margin:0;}
     .titleblock .sub{color:var(--muted);font-size:12px;margin:2px 0 0 0;}
     .meta-actions{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-right:12px;}
     .pill{
-      font-size:12px;
-      padding:8px 10px;
-      border:1px solid rgba(255,255,255,.14);
-      border-radius:999px;
-      color:var(--muted);
-      background: rgba(255,255,255,.05);
+      font-size:12px; padding:8px 10px; border:1px solid rgba(255,255,255,.14);
+      border-radius:999px; color:var(--muted); background: rgba(255,255,255,.05);
       display:flex; gap:8px; align-items:center;
     }
 
     .wrap{
       width: calc(100vw - 24px);
       margin:16px auto 30px;
-      display:grid;
-      gap:16px;
+      display:grid; gap:16px;
       grid-template-columns: 1fr;
     }
 
     .grid2{
-      display:grid;
-      grid-template-columns: 1.05fr .95fr;
-      gap:16px;
+      display:grid; grid-template-columns: 1.05fr .95fr; gap:16px;
     }
     @media (max-width: 980px){ .grid2{grid-template-columns:1fr} }
 
@@ -242,19 +228,9 @@
     td input{width: 100%;min-width: 110px;padding:8px 8px;border-radius:10px;font-size:12.5px;}
     .tiny{font-size:11px; color:var(--muted); line-height:1.1;}
 
-    .chk{
-      width:16px; height:16px;
-      accent-color: var(--accent);
-      cursor:pointer;
-      transform: translateY(2px);
-    }
-    .chkwrap{
-      display:flex; align-items:center; justify-content:center;
-      width:100%;
-      padding-top:2px;
-    }
+    .chk{width:16px; height:16px; accent-color: var(--accent); cursor:pointer; transform: translateY(2px);}
+    .chkwrap{display:flex; align-items:center; justify-content:center; width:100%; padding-top:2px;}
 
-    /* ✅ Barcode preview under Item code */
     .barcodePreview{
       font-family: var(--barcode-font);
       font-size: 28px;
@@ -309,11 +285,7 @@
       font-size:12px;
       font-weight:800;
     }
-    .step.on{
-      color:#eaf2ff;
-      border-color: rgba(42,168,255,.45);
-      background: rgba(42,168,255,.08);
-    }
+    .step.on{color:#eaf2ff;border-color: rgba(42,168,255,.45);background: rgba(42,168,255,.08);}
     .step .dot{width:9px; height:9px; border-radius:50%;background: rgba(255,255,255,.25);}
     .step.on .dot{background: var(--accent)}
     .sep{opacity:.5}
@@ -395,7 +367,7 @@
             <div class="card">
               <div class="card-head">
                 <h2>Export</h2>
-                <p class="hint">Summary: A4 Landscape • Stickers: 2.17 × 1.18 inch</p>
+                <p class="hint">Summary: A4 Landscape • Stickers: <b>2.17 × 1.18 inch</b> (thermal label)</p>
               </div>
               <div class="card-body">
                 <div class="row">
@@ -440,7 +412,9 @@
                   <span class="badge" id="exportHint">Upload an Excel file to enable export.</span>
                 </div>
 
-                <p class="note">Function #2: Each item row has a <b>Sticker PDF</b> button. You can also export an <b>Excel (XLSX)</b> file using the chosen export scope.</p>
+                <p class="note">
+                  For thermal printers: when printing the exported sticker PDF, choose <b>Actual size</b> (100%) and disable “Fit to page”.
+                </p>
               </div>
             </div>
           </div>
@@ -574,6 +548,10 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const state = { rawHeaders: [], rawRows: [], items: [], fileName: "", loaded: false };
+
+    // ✅ Sticker label size (thermal): 2.17 × 1.18 inches
+    const STICKER_W_IN = 2.17;
+    const STICKER_H_IN = 1.18;
 
     function toast(msg){
       const t = $("toast");
@@ -764,16 +742,15 @@
       return {cls:"ok", text:`OK (${d} days left)`};
     }
 
-    /* ✅ NEW: Code39 sanitizer (for preview + sticker) */
+    // Code39 sanitizer
     function toCode39Value(code){
       let c = safeText(code).replace(/\*/g,"").toUpperCase();
       if (!c) return "";
-      // Code 39 standard set: A-Z 0-9 space - . $ / + %
       c = c.replace(/[^A-Z0-9 \-.\$\/\+%]/g, "");
       return c;
     }
 
-    /* ✅ NEW: Table preview text: *VALUE* (required for Code 39 font) */
+    // Preview text: *VALUE*
     function barcodeFontText(code){
       const c = toCode39Value(code);
       if (!c) return "";
@@ -1099,7 +1076,7 @@
       toast("Summary PDF exported.");
     }
 
-    /* ✅ NEW: Sticker barcode now Code 39 (matches Free 3 of 9 style) */
+    // Sticker barcode: CODE39
     function makeBarcodePNGDataURL(value){
       const raw = toCode39Value(value);
       if (!raw) return null;
@@ -1128,7 +1105,7 @@
 
     function exportStickerForItem(item){
       const jsPDF = ensurePDF();
-      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[2.17, 1.18]});
+      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[STICKER_W_IN, STICKER_H_IN]});
       drawStickerPage(doc, item);
       const fname = `Sticker_${safeFileName(item.code || item.name)}_${ymdStamp()}.pdf`;
       doc.save(fname);
@@ -1140,9 +1117,9 @@
       const items = getExportItems();
       if (items.length === 0){ toast("No items match the chosen export scope."); return; }
 
-      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[2.17, 1.18]});
+      const doc = new jsPDF({orientation:"landscape", unit:"in", format:[STICKER_W_IN, STICKER_H_IN]});
       items.forEach((it, idx)=>{
-        if (idx > 0) doc.addPage([2.17,1.18], "landscape");
+        if (idx > 0) doc.addPage([STICKER_W_IN,STICKER_H_IN], "landscape");
         drawStickerPage(doc, it);
       });
 
@@ -1151,41 +1128,44 @@
       toast("All stickers PDF exported.");
     }
 
+    // Draw exact-size thermal label (2.17 x 1.18 in)
     function drawStickerPage(doc, item){
       const W = doc.internal.pageSize.getWidth();
       const H = doc.internal.pageSize.getHeight();
 
-      const margin = 0.07;
+      // Small margins to maximize printable area on thermal labels
+      const margin = 0.04; // inches
       const innerW = W - margin*2;
       const innerH = H - margin*2;
 
       // Border
       doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.02);
-      doc.roundedRect(margin, margin, innerW, innerH, 0.08, 0.08, "S");
+      doc.setLineWidth(0.015);
+      doc.roundedRect(margin, margin, innerW, innerH, 0.06, 0.06, "S");
 
-      // Header background (black)
-      const headerH = 0.26;
+      // Header background
+      const headerH = 0.24;
       doc.setFillColor(0,0,0);
-      doc.roundedRect(margin, margin, innerW, headerH, 0.08, 0.08, "F");
+      doc.roundedRect(margin, margin, innerW, headerH, 0.06, 0.06, "F");
 
       // Header text (item name)
       doc.setTextColor(255,255,255);
       doc.setFont("helvetica","bold");
-      doc.setFontSize(8.9);
+      doc.setFontSize(8.7);
       const name = safeText(item.name) || "";
       const nameLines = doc.splitTextToSize(name, innerW - 0.10);
-      const headerTextY = margin + 0.18;
-      doc.text(nameLines.slice(0,2), margin + innerW/2, headerTextY, {align:"center"});
+      doc.text(nameLines.slice(0,2), margin + innerW/2, margin + 0.165, {align:"center"});
 
-      // Barcode (✅ now Code39)
+      // Barcode image area
       doc.setTextColor(0,0,0);
       const dataUrl = makeBarcodePNGDataURL(item.code);
-      const barcodeTop = margin + headerH + 0.06;
-      const barcodeH = 0.54;
+
+      const barcodeTop = margin + headerH + 0.045;
+      const barcodeH = 0.60;
+      const imgW = innerW - 0.08;
+      const imgX = margin + 0.04;
+
       if (dataUrl){
-        const imgW = innerW - 0.12;
-        const imgX = margin + 0.06;
         doc.addImage(dataUrl, "PNG", imgX, barcodeTop, imgW, barcodeH);
       }else{
         doc.setFont("helvetica","normal");
@@ -1193,16 +1173,15 @@
         doc.text("NO CODE", margin + innerW/2, barcodeTop + 0.26, {align:"center"});
       }
 
-      // Bottom line: Bar, Max, Min, Exp
+      // Bottom line
       const exp = item.expiryISO ? isoToDMY(item.expiryISO) : "N/A";
-      const bottomText = `Bar ${int0(item.bar)}  |  Max ${int0(item.max)}  |  Min ${int0(item.min)}  |  Exp ${exp}`;
-
+      const bottomText = `Bar ${int0(item.bar)} | Max ${int0(item.max)} | Min ${int0(item.min)} | Exp ${exp}`;
       doc.setFont("helvetica","bold");
-      doc.setFontSize(7.2);
+      doc.setFontSize(7.0);
 
-      const bottomY = H - margin - 0.10;
+      const bottomY = H - margin - 0.075;
       let txt = bottomText;
-      if (doc.getTextWidth(txt) > innerW - 0.08){
+      if (doc.getTextWidth(txt) > innerW - 0.05){
         txt = `Bar ${int0(item.bar)} | Max ${int0(item.max)} | Min ${int0(item.min)} | ${exp}`;
       }
       doc.text(txt, margin + innerW/2, bottomY, {align:"center"});
