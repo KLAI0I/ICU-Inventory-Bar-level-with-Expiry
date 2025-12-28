@@ -5,11 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ICU Inventory & Bar level with Expiry</title>
 
-  <!-- Google Font for barcode-like display in the web UI -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">
-
   <!-- SheetJS (Excel parser) -->
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
@@ -21,6 +16,15 @@
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
+    /* ✅ NEW: Local Code 39 font (Free 3 of 9 Extended)
+       Put fre3of9x.ttf in the SAME folder as this HTML file. */
+    @font-face{
+      font-family: "Free3of9Extended";
+      src: url("fre3of9x.ttf") format("truetype");
+      font-weight: normal;
+      font-style: normal;
+    }
+
     :root{
       --bg:#061325;
       --panel:#0a2142;
@@ -39,7 +43,9 @@
       --radius: 16px;
       --radius2: 22px;
       --font: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
-      --barcode-font: "Libre Barcode 39", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+      /* ✅ NEW: use your attached font */
+      --barcode-font: "Free3of9Extended", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
     *{box-sizing:border-box}
     body{
@@ -236,7 +242,6 @@
     td input{width: 100%;min-width: 110px;padding:8px 8px;border-radius:10px;font-size:12.5px;}
     .tiny{font-size:11px; color:var(--muted); line-height:1.1;}
 
-    /* Include checkbox (small + active) */
     .chk{
       width:16px; height:16px;
       accent-color: var(--accent);
@@ -249,9 +254,10 @@
       padding-top:2px;
     }
 
+    /* ✅ Barcode preview under Item code */
     .barcodePreview{
       font-family: var(--barcode-font);
-      font-size: 26px;
+      font-size: 28px;
       line-height: 0.9;
       letter-spacing: 1px;
       margin-top: 4px;
@@ -259,6 +265,7 @@
       user-select: all;
       text-align:center;
     }
+
     .badge{
       display:inline-flex; align-items:center; gap:6px;
       padding:6px 10px;
@@ -407,7 +414,6 @@
                   </div>
                 </div>
 
-                
                 <div class="divider"></div>
 
                 <div class="row">
@@ -428,7 +434,6 @@
                 <div class="divider"></div>
 
                 <div class="row" style="align-items:center">
-
                   <button class="btn primary" id="btnExportSummary" disabled>1) Export Summary PDF (A4 Landscape)</button>
                   <button class="btn" id="btnExportAllStickers" disabled>3) Export All Stickers in ONE PDF</button>
                   <button class="btn" id="btnExportExcel" disabled>Export Excel (XLSX)</button>
@@ -436,7 +441,6 @@
                 </div>
 
                 <p class="note">Function #2: Each item row has a <b>Sticker PDF</b> button. You can also export an <b>Excel (XLSX)</b> file using the chosen export scope.</p>
-                
               </div>
             </div>
           </div>
@@ -523,7 +527,6 @@
             <p class="hint">Bar/Max/Min are integers. Max/Min recalculates automatically when Bar changes.</p>
           </div>
           <div class="card-body">
-            
 
             <div class="row" style="align-items:center">
               <button class="btn danger" id="btnDeleteChecked" disabled>Delete checked items</button>
@@ -531,8 +534,6 @@
               <button class="btn" id="btnUncheckAll" disabled>Uncheck all</button>
               <span class="badge right" id="lastSaved">Not saved (local only)</span>
             </div>
-
-            
 
             <div class="divider"></div>
 
@@ -763,8 +764,18 @@
       return {cls:"ok", text:`OK (${d} days left)`};
     }
 
+    /* ✅ NEW: Code39 sanitizer (for preview + sticker) */
+    function toCode39Value(code){
+      let c = safeText(code).replace(/\*/g,"").toUpperCase();
+      if (!c) return "";
+      // Code 39 standard set: A-Z 0-9 space - . $ / + %
+      c = c.replace(/[^A-Z0-9 \-.\$\/\+%]/g, "");
+      return c;
+    }
+
+    /* ✅ NEW: Table preview text: *VALUE* (required for Code 39 font) */
     function barcodeFontText(code){
-      const c = safeText(code).replace(/\*/g,"");
+      const c = toCode39Value(code);
       if (!c) return "";
       return `*${c}*`;
     }
@@ -1001,7 +1012,7 @@
     }
 
     // -----------------------------
-    // PDF Export (no footer in exported files)
+    // PDF Export
     // -----------------------------
     function ensurePDF(){
       if (!(window.jspdf && window.jspdf.jsPDF)){
@@ -1010,7 +1021,6 @@
       }
       return window.jspdf.jsPDF;
     }
-
 
     function getExportItems(){
       const scope = $("exportScope")?.value || "selected";
@@ -1026,7 +1036,6 @@
         });
       }
 
-      // default: selected (checked)
       return state.items.filter(it=>it.include);
     }
 
@@ -1036,7 +1045,7 @@
       if (items.length === 0){ toast("No items match the chosen export scope."); return; }
 
       const doc = new jsPDF({orientation:"landscape", unit:"pt", format:"a4"});
-      const margin = 14; // narrow
+      const margin = 14;
 
       doc.setFont("helvetica","bold");
       doc.setFontSize(13);
@@ -1059,7 +1068,6 @@
         it.pack || ""
       ]);
 
-      // Fit all columns in A4 landscape, and center text in cells
       doc.autoTable({
         startY: 48,
         margin: {left: margin, right: margin},
@@ -1091,8 +1099,9 @@
       toast("Summary PDF exported.");
     }
 
+    /* ✅ NEW: Sticker barcode now Code 39 (matches Free 3 of 9 style) */
     function makeBarcodePNGDataURL(value){
-      const raw = safeText(value);
+      const raw = toCode39Value(value);
       if (!raw) return null;
 
       const canvas = document.createElement("canvas");
@@ -1101,8 +1110,8 @@
 
       try{
         JsBarcode(canvas, raw, {
-          format: "CODE128",
-          displayValue: true,         // show code under barcode
+          format: "CODE39",
+          displayValue: true,
           font: "monospace",
           fontSize: 34,
           textMargin: 0,
@@ -1146,7 +1155,7 @@
       const W = doc.internal.pageSize.getWidth();
       const H = doc.internal.pageSize.getHeight();
 
-      const margin = 0.07; // inches
+      const margin = 0.07;
       const innerW = W - margin*2;
       const innerH = H - margin*2;
 
@@ -1166,13 +1175,12 @@
       doc.setFontSize(8.9);
       const name = safeText(item.name) || "";
       const nameLines = doc.splitTextToSize(name, innerW - 0.10);
-      // center vertically inside header
       const headerTextY = margin + 0.18;
       doc.text(nameLines.slice(0,2), margin + innerW/2, headerTextY, {align:"center"});
 
-      // Barcode
+      // Barcode (✅ now Code39)
       doc.setTextColor(0,0,0);
-      const dataUrl = makeBarcodePNGDataURL(safeText(item.code));
+      const dataUrl = makeBarcodePNGDataURL(item.code);
       const barcodeTop = margin + headerH + 0.06;
       const barcodeH = 0.54;
       if (dataUrl){
@@ -1185,7 +1193,7 @@
         doc.text("NO CODE", margin + innerW/2, barcodeTop + 0.26, {align:"center"});
       }
 
-      // Bottom line: Bar, Max, Min, Exp (same line)
+      // Bottom line: Bar, Max, Min, Exp
       const exp = item.expiryISO ? isoToDMY(item.expiryISO) : "N/A";
       const bottomText = `Bar ${int0(item.bar)}  |  Max ${int0(item.max)}  |  Min ${int0(item.min)}  |  Exp ${exp}`;
 
@@ -1193,15 +1201,12 @@
       doc.setFontSize(7.2);
 
       const bottomY = H - margin - 0.10;
-      // Ensure it fits within sticker width
       let txt = bottomText;
-      // If too long, shorten Exp label
       if (doc.getTextWidth(txt) > innerW - 0.08){
         txt = `Bar ${int0(item.bar)} | Max ${int0(item.max)} | Min ${int0(item.min)} | ${exp}`;
       }
       doc.text(txt, margin + innerW/2, bottomY, {align:"center"});
     }
-
 
     async function exportExcelXLSX(){
       await waitForLibs();
@@ -1226,7 +1231,6 @@
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(data);
 
-      // Improve column widths (approx)
       ws["!cols"] = [
         {wch:18},{wch:42},{wch:20},{wch:8},{wch:10},{wch:10},{wch:16}
       ];
@@ -1304,12 +1308,10 @@
     $("searchBox").addEventListener("input", renderTable);
     $("quickFilter").addEventListener("change", renderTable);
 
-
     $("exportScope").addEventListener("change", ()=>{
       const v = $("exportScope").value;
       $("nearDays").disabled = (v !== "nearExpiry") || !state.loaded;
     });
-
 
     $("btnExportSummary").addEventListener("click", ()=>{
       try{ exportSummaryPDF(); }catch(err){ console.error(err); toast("Export failed."); }
@@ -1319,12 +1321,11 @@
       try{ exportAllStickers(); }catch(err){ console.error(err); toast("Export failed."); }
     });
 
-    
     $("btnExportExcel").addEventListener("click", ()=>{
       exportExcelXLSX().catch(err=>{ console.error(err); toast("Excel export failed."); });
     });
 
-$("btnSample").addEventListener("click", ()=>{
+    $("btnSample").addEventListener("click", ()=>{
       downloadSample().catch(err=>{ console.error(err); toast(err.message || "Failed."); });
     });
 
@@ -1351,7 +1352,6 @@ $("btnSample").addEventListener("click", ()=>{
       const id = el?.dataset?.id;
       if (!act || !id) return;
 
-      // IMPORTANT: do not re-render on checkbox input; handle it in the "change" listener
       if (act === "toggleInclude") return;
       const it = state.items.find(x=>x.id === id);
       if (!it) return;
@@ -1370,7 +1370,7 @@ $("btnSample").addEventListener("click", ()=>{
       if (act === "editMin") it.min = int0(el.value);
       if (act === "editPack") it.pack = el.value;
 
-      renderTable(); // refresh barcode preview if code changes
+      renderTable();
       updateKPIs();
     });
 
